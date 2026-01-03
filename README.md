@@ -63,7 +63,7 @@ Provide feedback to the author via this [form](https://form.jotform.com/szeider/
 Simply run:
 
 ```bash
-claude mcp add mcp-dblp-vis -- uvx mcp-dblp-vis
+claude mcp add mcp-dblp-vis -- uvx --from git+https://github.com/TouKaienn/mcp-dblp-vis.git mcp-dblp-vis
 ```
 
 ### Claude Desktop
@@ -78,7 +78,7 @@ Add to your Claude Desktop configuration file:
   "mcpServers": {
     "mcp-dblp-vis": {
       "command": "uvx",
-      "args": ["mcp-dblp-vis"]
+      "args": ["--from", "git+https://github.com/TouKaienn/mcp-dblp-vis.git", "mcp-dblp-vis"]
     }
   }
 }
@@ -87,7 +87,7 @@ Add to your Claude Desktop configuration file:
 ### From Source (Development)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/mcp-dblp-vis.git
+git clone https://github.com/TouKaienn/mcp-dblp-vis.git
 cd mcp-dblp-vis
 uv venv && source .venv/bin/activate
 uv pip install -e .
