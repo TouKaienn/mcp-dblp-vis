@@ -1,14 +1,15 @@
 """
-MCP-DBLP Server Module
+MCP-DBLP-VIS Server Module
 
 IMPORTANT: This file must define a 'main()' function that is imported by __init__.py!
 Removing or renaming this function will break package imports and cause an error:
-  ImportError: cannot import name 'main' from 'mcp_dblp.server'
+  ImportError: cannot import name 'main' from 'mcp_dblp_vis.server'
 """
 
 import asyncio
 import logging
 import os
+import re
 import sys
 from importlib import resources
 
@@ -20,7 +21,7 @@ from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
 # Import DBLP client functions
-from mcp_dblp.dblp_client import (
+from mcp_dblp_vis.dblp_client import (
     calculate_statistics,
     fetch_and_process_bibtex,
     fuzzy_title_search,
@@ -30,22 +31,22 @@ from mcp_dblp.dblp_client import (
 )
 
 # Set up logging
-log_dir = os.path.expanduser("~/.mcp-dblp")
+log_dir = os.path.expanduser("~/.mcp-dblp-vis")
 os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, "mcp_dblp_server.log")
+log_file = os.path.join(log_dir, "mcp_dblp_vis_server.log")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[logging.FileHandler(log_file), logging.StreamHandler(sys.stderr)],
 )
-logger = logging.getLogger("mcp_dblp")
+logger = logging.getLogger("mcp_dblp_vis")
 
 
 try:
     from importlib.metadata import version
 
-    version_str = version("mcp-dblp")
+    version_str = version("mcp-dblp-vis")
     logger.info(f"Loaded version: {version_str}")
 except Exception:
     version_str = "x.x.x"  # Anonymous fallback version
@@ -73,7 +74,7 @@ def export_bibtex_entries(entries, path):
 async def serve() -> None:
     """Main server function to handle MCP requests"""
 
-    server = Server("mcp-dblp")
+    server = Server("mcp-dblp-vis")
 
     # Session-scoped buffer for BibTeX entries
     # Key: citation_key, Value: full bibtex string
@@ -216,12 +217,13 @@ async def serve() -> None:
                     "Add a BibTeX entry to the collection for later export. Call this once for each paper you want to export.\n"
                     "Arguments:\n"
                     "  - dblp_key (string, required): The DBLP key from search results (e.g., 'conf/nips/VaswaniSPUJGKP17').\n"
-                    "  - citation_key (string, required): The citation key to use in the .bib file (e.g., 'Vaswani2017').\n"
+                    "  - citation_key (string, optional): Custom citation key. If not provided, auto-generated as 'FirstAuthorLastName-VenueYY' (e.g., 'Vaswani-NeurIPS17').\n"
                     "Workflow:\n"
                     "  1. Fetches BibTeX directly from DBLP using the provided key\n"
-                    "  2. Replaces the citation key with your custom key\n"
-                    "  3. Adds to collection (duplicate citation_key will be overwritten)\n"
-                    "  4. Returns count of entries currently in collection\n"
+                    "  2. If arXiv version, automatically searches for journal/conference version (priority: journal > conference > arXiv)\n"
+                    "  3. Formats entry in standardized format (@article or @inproceedings)\n"
+                    "  4. Generates or uses custom citation key\n"
+                    "  5. Adds to collection (duplicate citation_key will be overwritten)\n"
                     "After adding all entries, call export_bibtex to save them to a .bib file."
                 ),
                 inputSchema={
@@ -230,7 +232,7 @@ async def serve() -> None:
                         "dblp_key": {"type": "string"},
                         "citation_key": {"type": "string"},
                     },
-                    "required": ["dblp_key", "citation_key"],
+                    "required": ["dblp_key"],
                 },
             ),
             types.Tool(
@@ -265,7 +267,7 @@ async def serve() -> None:
                 case "get_instructions":
                     try:
                         instructions = (
-                            resources.files("mcp_dblp")
+                            resources.files("mcp_dblp_vis")
                             .joinpath("instructions_prompt.md")
                             .read_text(encoding="utf-8")
                         )
@@ -400,26 +402,16 @@ async def serve() -> None:
                     citation_key = arguments.get("citation_key")
 
                     # Validate inputs
-                    if not dblp_key or not citation_key:
+                    if not dblp_key:
                         return [
                             types.TextContent(
                                 type="text",
-                                text="Error: Missing required parameter 'dblp_key' or 'citation_key'",
+                                text="Error: Missing required parameter 'dblp_key'",
                             )
                         ]
 
-                    # Sanitize dblp_key: remove .bib extension and URL prefix if present
-                    dblp_key = dblp_key.strip()
-                    if dblp_key.endswith(".bib"):
-                        dblp_key = dblp_key[:-4]
-                    if "dblp.org/rec/" in dblp_key:
-                        dblp_key = dblp_key.split("dblp.org/rec/")[-1]
-
-                    # Construct DBLP BibTeX URL
-                    url = f"https://dblp.org/rec/{dblp_key}.bib"
-
-                    # Fetch BibTeX
-                    bibtex = fetch_and_process_bibtex(url, citation_key)
+                    # Fetch and process BibTeX (citation_key is optional, auto-generated if not provided)
+                    bibtex = fetch_and_process_bibtex(dblp_key, citation_key if citation_key else None)
 
                     # Check for fetch errors (function returns strings starting with % Error)
                     if bibtex.strip().startswith("% Error"):
@@ -430,24 +422,28 @@ async def serve() -> None:
                             )
                         ]
 
+                    # Extract the actual citation key from the generated bibtex
+                    key_match = re.match(r"@\w+{([^,]+),", bibtex)
+                    actual_key = key_match.group(1) if key_match else citation_key or "unknown"
+
                     # Check if we're overwriting an existing key
-                    was_overwritten = citation_key in bibtex_buffer
+                    was_overwritten = actual_key in bibtex_buffer
 
                     # Add to buffer (overwrite if key exists)
-                    bibtex_buffer[citation_key] = bibtex
+                    bibtex_buffer[actual_key] = bibtex
 
                     if was_overwritten:
                         return [
                             types.TextContent(
                                 type="text",
-                                text=f"Successfully added '{citation_key}' (replaced existing entry). Collection contains {len(bibtex_buffer)} entries.",
+                                text=f"Successfully added '{actual_key}' (replaced existing entry). Collection contains {len(bibtex_buffer)} entries.\n\n{bibtex}",
                             )
                         ]
                     else:
                         return [
                             types.TextContent(
                                 type="text",
-                                text=f"Successfully added '{citation_key}'. Collection contains {len(bibtex_buffer)} entries.",
+                                text=f"Successfully added '{actual_key}'. Collection contains {len(bibtex_buffer)} entries.\n\n{bibtex}",
                             )
                         ]
 
@@ -492,7 +488,7 @@ async def serve() -> None:
             read_stream,
             write_stream,
             InitializationOptions(
-                server_name="mcp-dblp",
+                server_name="mcp-dblp-vis",
                 server_version=version_str,
                 capabilities=server.get_capabilities(
                     notification_options=NotificationOptions(),
@@ -584,7 +580,7 @@ def format_dict(data):
 
 
 def main() -> int:
-    logger.info(f"Starting MCP-DBLP server with version: {version_str}")
+    logger.info(f"Starting MCP-DBLP-VIS server with version: {version_str}")
     try:
         asyncio.run(serve())
         return 0

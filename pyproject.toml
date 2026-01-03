@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mcp-dblp"
+name = "mcp-dblp-vis"
 version = "1.2.1"
 description = "An MCP server that provides access to the DBLP computer science bibliography for LLMs."
 readme = "README.md"
@@ -34,7 +34,7 @@ Repository = "https://github.com/szeider/mcp-dblp"
 Issues = "https://github.com/szeider/mcp-dblp/issues"
 
 [project.scripts]
-mcp-dblp = "mcp_dblp.server:main"
+mcp-dblp-vis = "mcp_dblp_vis.server:main"
 
 [tool.black]
 line-length = 88

@@ -5,9 +5,10 @@ You are given a text with embedded references in some format, for instance (auth
 ## Your Task
 
 1. Search for each citation to get its DBLP entry
-2. **Immediately add each found entry** to the collection using add_bibtex_entry (pass dblp_key and citation_key)
+2. **Immediately add each found entry** to the collection using add_bibtex_entry (pass dblp_key only)
    - Do this right after finding each paper, don't wait until the end
-   - The tool fetches the COMPLETE and UNMODIFIED BibTeX directly from DBLP
+   - The tool fetches BibTeX from DBLP and processes it with standardized formatting
+   - Citation keys are auto-generated in `FirstAuthor-VenueYY` format (e.g., `Han-TVCG22`)
 3. Output the text with each citation replaced by a \cite{..} command
 4. Export all collected entries using export_bibtex tool
 
@@ -18,12 +19,12 @@ You are given a text with embedded references in some format, for instance (auth
   - Example: Search for 5 different papers in one request with 5 parallel search calls
   - You can mix different tool types: searches + author lookups + venue info in one batch
   - **However:** After getting search results, call add_bibtex_entry for each paper immediately - do NOT batch the add_bibtex_entry calls
-- BibTeX entries MUST be copied EXACTLY and COMPLETELY as they appear in DBLP (including all fields, formatting, and whitespace)
-- The ONLY modification allowed is changing the citation key:
-  - For example, change "DBLP:conf/sat/Szeider09" to just "Szeider09"
-  - Ensure all keys remain unique
+- BibTeX entries are processed and standardized automatically:
+  - Citation keys are auto-generated in `FirstAuthor-VenueYY` format
+  - Venue names are standardized (full journal names, "Proceedings of..." for conferences)
+  - For arXiv papers, the system automatically searches for published versions
+  - Priority ordering: journal > conference > arXiv
 - If uncertain about the correct entry for a citation, ask the user for guidance
-- Do not abbreviate, summarize, or reformat any part of the BibTeX entries
 
 ## Search Strategy
 
@@ -81,11 +82,11 @@ When presenting your solution, provide:
    All return together → you get 5 dblp_keys
 
 2. Add each result from batch 1 immediately (one by one):
-   add_bibtex_entry(dblp_key="conf/nips/VaswaniSPUJGKP17", citation_key="Vaswani2017")
-   → "Successfully added 'Vaswani2017'. Collection contains 1 entries."
+   add_bibtex_entry(dblp_key="conf/nips/VaswaniSPUJGKP17")
+   → "Successfully added 'Vaswani-NeurIPS17'. Collection contains 1 entries."
 
-   add_bibtex_entry(dblp_key="journals/nature/LeCunBH15", citation_key="LeCun2015")
-   → "Successfully added 'LeCun2015'. Collection contains 2 entries."
+   add_bibtex_entry(dblp_key="journals/nature/LeCunBH15")
+   → "Successfully added 'LeCun-Nature15'. Collection contains 2 entries."
 
    [... add remaining 3 entries from batch 1 ...]
 
@@ -119,11 +120,12 @@ This system provides the following tools to help with citation processing:
 5. **calculate_statistics**: Generate statistics from publication results
    - Parameters: results (required)
 6. **add_bibtex_entry**: Add a BibTeX entry to the collection for later export
-   - Parameters: dblp_key (required), citation_key (required)
+   - Parameters: dblp_key (required)
    - Takes the DBLP key directly from search results (e.g., "conf/nips/VaswaniSPUJGKP17")
    - **CRITICAL:** Copy the DBLP key EXACTLY as it appears in search results - character by character
-   - Fetches BibTeX from DBLP and stores it with your custom citation key
-   - Returns success/failure with collection count
+   - Auto-generates citation key in `FirstAuthor-VenueYY` format
+   - Standardizes venue names and upgrades arXiv to published versions when available
+   - Returns success/failure with collection count and generated citation key
    - **If it fails:** You copied the key incorrectly - go back to search results and copy it again carefully
    - Call this once for each paper you want to export
 7. **export_bibtex**: Export all collected BibTeX entries to a .bib file
@@ -147,9 +149,9 @@ This system provides the following tools to help with citation processing:
    All execute simultaneously and return together
 
 2. Then add each result immediately (sequentially):
-   - add_bibtex_entry(dblp_key="...", citation_key="Smith2023")
-   - add_bibtex_entry(dblp_key="...", citation_key="Jones2022")
-   - add_bibtex_entry(dblp_key="...", citation_key="McKay...")
+   - add_bibtex_entry(dblp_key="...")  → auto-generates "Smith-VenueYY"
+   - add_bibtex_entry(dblp_key="...")  → auto-generates "Jones-VenueYY"
+   - add_bibtex_entry(dblp_key="...")  → auto-generates "McKay-VenueYY"
 ```
 
 ❌ **DON'T DO THIS** (Inefficient):

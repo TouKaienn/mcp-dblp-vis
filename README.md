@@ -1,24 +1,20 @@
-# MCP-DBLP
+# MCP-DBLP-VIS
 
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT) [![Python Version](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
 
-A Model Context Protocol (MCP) server that provides access to the DBLP computer science bibliography database for Large Language Models (accompanying paper accepted to [AI4SC @ AAAI-26](https://sites.google.com/view/ai4sc/2026-submissions)).
-
-<a href="https://glama.ai/mcp/servers/cm42scf3iv">
-  <img width="380" height="200" src="https://glama.ai/mcp/servers/cm42scf3iv/badge" alt="MCP-DBLP MCP server" />
-</a>
+A Model Context Protocol (MCP) server that provides access to the DBLP computer science bibliography database for Large Language Models, with enhanced BibTeX processing for visualization research.
 
 ------
 
 ## Overview
 
-The MCP-DBLP integrates the DBLP (Digital Bibliography & Library Project) API with LLMs through the Model Context Protocol, enabling AI models to:
+MCP-DBLP-VIS integrates the DBLP (Digital Bibliography & Library Project) API with LLMs through the Model Context Protocol, enabling AI models to:
 
 - Search and retrieve academic publications from the DBLP database
-- Process citations and generate BibTeX entries
+- Process citations and generate standardized BibTeX entries
 - Perform fuzzy matching on publication titles and author names
 - Extract and format bibliographic information
-- Process embedded references in documents
+- Automatically upgrade arXiv references to published journal/conference versions
 - Direct BibTeX export that bypasses LLM processing for maximum accuracy
 
 ## Features
@@ -29,6 +25,11 @@ The MCP-DBLP integrates the DBLP (Digital Bibliography & Library Project) API wi
 - Publication filtering by year and venue
 - Statistical analysis of publication data
 - Direct BibTeX export capability that bypasses LLM processing for maximum accuracy
+- **Enhanced BibTeX Processing:**
+  - Auto-generated citation keys in `FirstAuthor-VenueYY` format (e.g., `Han-TVCG22`)
+  - Standardized venue names (full journal names, "Proceedings of..." for conferences)
+  - Priority ordering: journal > conference > arXiv
+  - Automatic search for published versions when given arXiv references
 
 ## Available Tools
 
@@ -62,7 +63,7 @@ Provide feedback to the author via this [form](https://form.jotform.com/szeider/
 Simply run:
 
 ```bash
-claude mcp add mcp-dblp -- uvx mcp-dblp
+claude mcp add mcp-dblp-vis -- uvx mcp-dblp-vis
 ```
 
 ### Claude Desktop
@@ -75,9 +76,9 @@ Add to your Claude Desktop configuration file:
 ```json
 {
   "mcpServers": {
-    "mcp-dblp": {
+    "mcp-dblp-vis": {
       "command": "uvx",
-      "args": ["mcp-dblp"]
+      "args": ["mcp-dblp-vis"]
     }
   }
 }
@@ -86,8 +87,8 @@ Add to your Claude Desktop configuration file:
 ### From Source (Development)
 
 ```bash
-git clone https://github.com/szeider/mcp-dblp.git
-cd mcp-dblp
+git clone https://github.com/YOUR_USERNAME/mcp-dblp-vis.git
+cd mcp-dblp-vis
 uv venv && source .venv/bin/activate
 uv pip install -e .
 ```
@@ -97,9 +98,9 @@ Then configure Claude Desktop with:
 ```json
 {
   "mcpServers": {
-    "mcp-dblp": {
+    "mcp-dblp-vis": {
       "command": "uv",
-      "args": ["--directory", "/path/to/mcp-dblp/", "run", "mcp-dblp"]
+      "args": ["--directory", "/path/to/mcp-dblp-vis/", "run", "mcp-dblp-vis"]
     }
   }
 }
@@ -175,12 +176,14 @@ Add a BibTeX entry to the collection for later export.
 **Parameters:**
 
 - `dblp_key` (string, required): The DBLP key from search results (e.g., "conf/nips/VaswaniSPUJGKP17")
-- `citation_key` (string, required): The citation key to use in the .bib file (e.g., "Vaswani2017")
 
 **Behavior:**
 
 - Fetches BibTeX entry directly from DBLP using the provided key
-- Replaces the citation key with your custom key
+- Automatically generates citation key in `FirstAuthor-VenueYY` format (e.g., `Vaswani-NeurIPS17`)
+- Standardizes venue names (full journal names, "Proceedings of..." for conferences)
+- For arXiv papers, automatically searches for published journal/conference versions
+- Priority ordering: journal > conference > arXiv
 - Adds to session collection (duplicate keys are overwritten)
 - Returns immediate success/failure feedback with collection count
 - Allows retry of individual failed entries
@@ -202,7 +205,7 @@ Export all collected BibTeX entries to a .bib file.
 - Returns the full path to the saved file
 - Returns error if collection is empty
 
-**Important Note:** The BibTeX entries are fetched directly from DBLP with a 10-second timeout protection and are not processed, modified, or hallucinated by the LLM. This ensures maximum accuracy and trustworthiness of the bibliographic data. Only the citation keys are modified as specified. If a request times out, an error message is returned and the entry is not added to the collection.
+**Important Note:** The BibTeX entries are fetched directly from DBLP with a 10-second timeout protection and are not hallucinated by the LLM. The entries are processed to standardize venue names, generate consistent citation keys, and upgrade arXiv references to published versions when available. If a request times out, an error message is returned and the entry is not added to the collection.
 
 ------
 
@@ -359,7 +362,9 @@ Export all collected BibTeX entries to a .bib file.
 
 ## Disclaimer
 
-This MCP-DBLP is in its prototype stage and should be used with caution. Users are encouraged to experiment, but any use in critical environments is at their own risk.
+MCP-DBLP-VIS is in its prototype stage and should be used with caution. Users are encouraged to experiment, but any use in critical environments is at their own risk.
+
+This is a fork of [MCP-DBLP](https://github.com/szeider/mcp-dblp) with enhanced BibTeX processing for visualization research.
 
 ------
 
