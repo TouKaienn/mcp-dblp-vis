@@ -771,8 +771,23 @@ def _find_arxiv_doi(title: str, authors: list[str]) -> str | None:
     clean_title = re.sub(r"[{}\\']", "", clean_title)  # Remove remaining braces and backslashes
     clean_title = clean_title.strip()
 
-    # Build search query - just use title for more reliable search
-    search_query = clean_title
+    # Clean first author name for search
+    first_author_clean = ""
+    if authors:
+        first_author = authors[0] if authors else ""
+        # Clean author name - remove LaTeX formatting and get last name
+        first_author_clean = re.sub(r"\\[a-zA-Z]+\{([^}]*)\}", r"\1", first_author)
+        first_author_clean = re.sub(r"[{}\\']", "", first_author_clean)
+        # Get last name (last word)
+        name_parts = first_author_clean.strip().split()
+        if name_parts:
+            first_author_clean = name_parts[-1]
+
+    # Build search query - include author for better results
+    if first_author_clean:
+        search_query = f"{clean_title} {first_author_clean}"
+    else:
+        search_query = clean_title
 
     try:
         results = search(search_query, max_results=20)
@@ -780,12 +795,15 @@ def _find_arxiv_doi(title: str, authors: list[str]) -> str | None:
         # Clean title for comparison
         search_title_lower = clean_title.lower().strip()
 
+        # Collect all arXiv candidates with their similarity scores
+        candidates = []
+        
         for result in results:
             result_title = result.get("title", "").lower().strip()
 
             # Check title similarity
             ratio = difflib.SequenceMatcher(None, search_title_lower, result_title).ratio()
-            if ratio < 0.7:  # Skip if title is too different
+            if ratio < 0.85:  # Require high similarity
                 continue
 
             dblp_key = result.get("dblp_key", "")
@@ -796,7 +814,18 @@ def _find_arxiv_doi(title: str, authors: list[str]) -> str | None:
             if "arxiv" not in dblp_key.lower() and "corr" not in dblp_key.lower():
                 continue
 
-            # Found arXiv version, now fetch its BibTeX to get the eprint/arxiv ID
+            candidates.append({
+                "dblp_key": dblp_key,
+                "similarity": ratio,
+                "title": result_title,
+            })
+
+        # Sort by similarity (highest first)
+        candidates.sort(key=lambda x: -x["similarity"])
+
+        # Try to get arXiv DOI from the best matching candidate
+        for candidate in candidates:
+            dblp_key = candidate["dblp_key"]
             try:
                 url = f"https://dblp.org/rec/{dblp_key}.bib"
                 response = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
@@ -816,6 +845,7 @@ def _find_arxiv_doi(title: str, authors: list[str]) -> str | None:
                 if arxiv_id:
                     # Clean up arxiv_id (remove version like v1, v2)
                     arxiv_id = arxiv_id.split("v")[0] if "v" in arxiv_id and arxiv_id[-1].isdigit() else arxiv_id
+                    logger.info(f"Best arXiv match: {dblp_key} (similarity: {candidate['similarity']:.2f})")
                     return f"10.48550/arXiv.{arxiv_id}"
 
             except Exception as e:
