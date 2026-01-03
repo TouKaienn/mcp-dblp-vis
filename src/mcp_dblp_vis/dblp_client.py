@@ -754,6 +754,81 @@ def _find_best_version(title: str, authors: list[str], year: str) -> str | None:
         return None
 
 
+def _find_arxiv_doi(title: str, authors: list[str]) -> str | None:
+    """
+    Search for an arXiv version of a publication and return its DOI.
+    arXiv DOI format: 10.48550/arXiv.XXXX.XXXXX
+    
+    Returns:
+        str: arXiv DOI if found, None otherwise
+    """
+    if not title:
+        return None
+
+    # Clean title - remove LaTeX formatting
+    clean_title = re.sub(r"\{[^}]*\}", "", title)  # Remove braces content like {SSR-TVD}
+    clean_title = re.sub(r"\\[a-zA-Z]+\{([^}]*)\}", r"\1", clean_title)  # \'{e} -> e
+    clean_title = re.sub(r"[{}\\']", "", clean_title)  # Remove remaining braces and backslashes
+    clean_title = clean_title.strip()
+
+    # Build search query - just use title for more reliable search
+    search_query = clean_title
+
+    try:
+        results = search(search_query, max_results=20)
+
+        # Clean title for comparison
+        search_title_lower = clean_title.lower().strip()
+
+        for result in results:
+            result_title = result.get("title", "").lower().strip()
+
+            # Check title similarity
+            ratio = difflib.SequenceMatcher(None, search_title_lower, result_title).ratio()
+            if ratio < 0.7:  # Skip if title is too different
+                continue
+
+            dblp_key = result.get("dblp_key", "")
+            if not dblp_key:
+                continue
+
+            # Check if this is an arXiv paper (corr = Computing Research Repository)
+            if "arxiv" not in dblp_key.lower() and "corr" not in dblp_key.lower():
+                continue
+
+            # Found arXiv version, now fetch its BibTeX to get the eprint/arxiv ID
+            try:
+                url = f"https://dblp.org/rec/{dblp_key}.bib"
+                response = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+                response.raise_for_status()
+                arxiv_bibtex = response.text
+
+                arxiv_fields = _parse_bibtex_fields(arxiv_bibtex)
+                
+                # Try to get arXiv ID from eprint field or URL
+                arxiv_id = arxiv_fields.get("eprint", "")
+                if not arxiv_id:
+                    # Try to extract from URL like https://arxiv.org/abs/1802.01436
+                    arxiv_url = arxiv_fields.get("url", "")
+                    if "arxiv.org/abs/" in arxiv_url:
+                        arxiv_id = arxiv_url.split("arxiv.org/abs/")[-1]
+                
+                if arxiv_id:
+                    # Clean up arxiv_id (remove version like v1, v2)
+                    arxiv_id = arxiv_id.split("v")[0] if "v" in arxiv_id and arxiv_id[-1].isdigit() else arxiv_id
+                    return f"10.48550/arXiv.{arxiv_id}"
+
+            except Exception as e:
+                logger.warning(f"Error fetching arXiv BibTeX: {e}")
+                continue
+
+        return None
+
+    except Exception as e:
+        logger.warning(f"Error searching for arXiv version: {e}")
+        return None
+
+
 def fetch_and_process_bibtex(dblp_key: str, custom_citation_key: str | None = None):
     """
     Fetch BibTeX from DBLP and format it according to specified rules.
@@ -836,6 +911,15 @@ def fetch_and_process_bibtex(dblp_key: str, custom_citation_key: str | None = No
             citation_key = custom_citation_key
         else:
             citation_key = _generate_citation_key(first_author, venue, year, pub_type)
+
+        # If no DOI in journal/conference version, try to find arXiv DOI
+        if not fields.get("doi") and pub_type in ["journal", "conference"]:
+            title = fields.get("title", "")
+            logger.info(f"No DOI found, searching for arXiv DOI...")
+            arxiv_doi = _find_arxiv_doi(title, authors_list)
+            if arxiv_doi:
+                logger.info(f"Found arXiv DOI: {arxiv_doi}")
+                fields["doi"] = arxiv_doi
 
         # Format the BibTeX entry
         formatted_bibtex = _format_bibtex_entry(fields, citation_key)
