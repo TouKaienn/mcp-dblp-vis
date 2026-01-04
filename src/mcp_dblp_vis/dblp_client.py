@@ -499,6 +499,18 @@ def _normalize_venue_name(venue: str, is_journal: bool) -> str:
         ("journal of machine learning research", "Journal of Machine Learning Research"),
         ("j. mach. learn. res", "Journal of Machine Learning Research"),
         ("jmlr", "Journal of Machine Learning Research"),
+        # IEEE Transactions
+        ("ieee trans. multim.", "IEEE Transactions on Multimedia"),
+        ("ieee transactions on multimedia", "IEEE Transactions on Multimedia"),
+        ("ieee trans. big data", "IEEE Transactions on Big Data"),
+        ("ieee transactions on big data", "IEEE Transactions on Big Data"),
+        # High Performance Computing
+        ("int. j. high perform. comput. appl.", "The International Journal of High Performance Computing Applications"),
+        ("international journal of high performance computing applications", "The International Journal of High Performance Computing Applications"),
+        # Physics
+        ("j. phys.: condens. matter", "Journal of Physics: Condensed Matter"),
+        ("journal of physics: condensed matter", "Journal of Physics: Condensed Matter"),
+        ("j. phys. condens. matter", "Journal of Physics: Condensed Matter"),
         # General
         ("nature", "Nature"),
         ("science", "Science"),
@@ -581,7 +593,9 @@ def _normalize_title(title: str) -> str:
     """
     Normalize title formatting.
     - Keep acronyms in braces but move punctuation outside
+    - Protect words that must maintain capitalization with braces
     - e.g., "{SSR-TVD:}" -> "{SSR-TVD}:"
+    - e.g., "3D Gaussian" -> "{3D} {Gaussian}"
     """
     if not title:
         return ""
@@ -607,6 +621,88 @@ def _normalize_title(title: str) -> str:
                 break
         if is_outer:
             title_clean = title_clean[1:-1]
+
+    # Words that must be protected with braces to maintain capitalization
+    # These are technical terms, acronyms, and proper nouns
+    protected_words = [
+        # Dimensions
+        r'1D', r'2D', r'3D', r'4D', r'5D', r'6D',
+        # Technical terms with capital letters
+        r'Gaussian', r'Gaussians',
+        r'GPU', r'GPUs', r'CPU', r'CPUs', r'TPU', r'TPUs',
+        r'CNN', r'CNNs', r'RNN', r'RNNs', r'GAN', r'GANs',
+        r'LSTM', r'LSTMs', r'GRU', r'GRUs',
+        r'MLP', r'MLPs', r'VAE', r'VAEs',
+        r'NeRF', r'NeRFs',
+        r'Transformer', r'Transformers',
+        r'BERT', r'GPT', r'LLM', r'LLMs',
+        r'RGB', r'RGBA', r'HDR', r'LDR',
+        r'SDF', r'SDFs', r'BRDF', r'BRDFs',
+        r'CUDA', r'OpenGL', r'Vulkan', r'DirectX',
+        r'PyTorch', r'TensorFlow', r'Keras', r'JAX',
+        r'ImageNet', r'CIFAR', r'MNIST',
+        r'Adam', r'SGD', r'AdaGrad', r'RMSprop',
+        r'ResNet', r'VGG', r'AlexNet', r'LeNet', r'UNet', r'U-Net',
+        r'YOLO', r'SSD', r'RCNN', r'R-CNN',
+        r'SSIM', r'PSNR', r'LPIPS', r'FID',
+        r'IoU', r'mAP', r'AUC', r'ROC',
+        r'PCA', r'SVD', r'ICA', r'NMF',
+        r'KNN', r'SVM', r'GMM',
+        r'Monte\s+Carlo', r'Markov',
+        r'Fourier', r'Laplacian', r'Hessian', r'Jacobian',
+        r'Boolean', r'Euclidean', r'Riemannian',
+        r'JavaScript', r'TypeScript', r'Python', r'Julia',
+        r'WebGL', r'WebGPU', r'OpenCL',
+        r'VR', r'AR', r'XR', r'MR',
+        r'HMD', r'HMDs',
+        r'DNS', r'CFD', r'FEM', r'SPH', r'PIC', r'FLIP',
+        r'MRI', r'CT', r'PET', r'fMRI',
+        r'API', r'APIs', r'SDK', r'SDKs',
+        r'UI', r'UX', r'GUI', r'GUIs',
+        r'JSON', r'XML', r'HTML', r'CSS',
+        r'SQL', r'NoSQL',
+        r'SIMD', r'MIMD', r'SIMT',
+        r'BLAS', r'LAPACK', r'cuBLAS', r'cuDNN',
+        r'ELU', r'ReLU', r'GELU', r'Swish', r'Mish',
+        r'BN', r'LN', r'GN',  # BatchNorm, LayerNorm, GroupNorm
+        r'IoT', r'AI', r'ML', r'DL', r'NLP', r'CV',
+        r'GNN', r'GNNs', r'GCN', r'GCNs',
+        r'MoE', r'LoRA', r'QLoRA',
+        r'CLIP', r'DALL-E', r'DALL·E', r'Stable\s+Diffusion',
+        r'AutoML', r'AutoEncoder', r'AutoEncoders',
+        r'KL', r'JS',  # KL divergence, JS divergence
+        r'L1', r'L2', r'Lp',
+        r'RGB-D', r'RGBD',
+        r'LiDAR', r'RADAR', r'IMU',
+        r'SLAM', r'VO', r'VIO',
+        r'LoD', r'LoDs',  # Level of Detail
+        r'AABB', r'OBB', r'BVH',  # Bounding boxes
+        r'kD-tree', r'k-d\s+tree', r'Octree',
+        r'MIP', r'MIPs',  # Mipmap
+        r'MSAA', r'FXAA', r'TAA', r'DLSS', r'FSR',
+        r'RTX', r'DXR',
+    ]
+
+    # Protect each word - but don't double-wrap already braced words
+    for word in protected_words:
+        # Pattern: word not already in braces, as a whole word
+        # Use word boundary but be careful with special chars
+        pattern = r'(?<!\{)(\b' + word + r'\b)(?!\})'
+        title_clean = re.sub(pattern, r'{\1}', title_clean, flags=re.IGNORECASE if word[0].islower() else 0)
+
+    # Protect title prefix before colon (e.g., "Deep Fluids:" -> "{Deep Fluids}:")
+    # This handles paper names like "Deep Fluids: A Generative Network..."
+    colon_match = re.match(r'^([A-Z][^:]+):\s+', title_clean)
+    if colon_match:
+        prefix = colon_match.group(1).strip()
+        # Only protect if it looks like a proper name (starts with capital, has 1-4 words)
+        words = prefix.split()
+        if 1 <= len(words) <= 4 and all(w[0].isupper() for w in words if w and w[0].isalpha()):
+            # Check if prefix is not already fully braced
+            if not (prefix.startswith('{') and prefix.endswith('}')):
+                # Wrap the prefix in braces
+                rest = title_clean[colon_match.end():]
+                title_clean = '{' + prefix + '}: ' + rest
 
     return title_clean
 
@@ -636,6 +732,10 @@ def _format_bibtex_entry(fields: dict[str, str], citation_key: str) -> str:
     # Normalize title
     if "title" in normalized_fields:
         normalized_fields["title"] = _normalize_title(normalized_fields["title"])
+
+    # Normalize DOI - remove backslashes (e.g., "10.1007/978-3-031-72667-5\_24" -> "10.1007/978-3-031-72667-5_24")
+    if "doi" in normalized_fields:
+        normalized_fields["doi"] = normalized_fields["doi"].replace("\\", "")
 
     # Determine if it's article or inproceedings based on available fields
     if entry_type in ["article", "journal"]:
